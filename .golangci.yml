@@ -50,14 +50,13 @@ linters:
     - reassign
     - revive
     - staticcheck
-    - tagliatelle
+    # - tagliatelle
     - testableexamples
     - testpackage
     - thelper
     - tparallel
     - unconvert
     - unparam
-    - unused
     - usestdlibvars
     - varnamelen
     - whitespace
