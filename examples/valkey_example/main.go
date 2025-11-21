@@ -122,7 +122,7 @@ func demonstrateValkeyOperations(ctx context.Context, indexer *kvcache.Indexer) 
 	logger.Info("Processing testdata prompt", "model", modelName, "promptLength", len(prompt))
 
 	// First, let's demonstrate basic scoring without any cache entries
-	scores, err := indexer.GetPodScores(ctx, prompt, modelName, []string{"demo-pod-1", "demo-pod-2"})
+	scores, err := indexer.GetPodScores(ctx, nil, prompt, modelName, []string{"demo-pod-1", "demo-pod-2"})
 	if err != nil {
 		return fmt.Errorf("failed to get pod scores: %w", err)
 	}
@@ -148,7 +148,7 @@ func demonstrateValkeyOperations(ctx context.Context, indexer *kvcache.Indexer) 
 	logger.Info("Added cache entries", "keys", len(promptKeys), "pods", len(podEntries))
 
 	// Query for cache scores again
-	scores, err = indexer.GetPodScores(ctx, prompt, modelName, []string{"demo-pod-1", "demo-pod-2"})
+	scores, err = indexer.GetPodScores(ctx, nil, prompt, modelName, []string{"demo-pod-1", "demo-pod-2"})
 	if err != nil {
 		return fmt.Errorf("failed to get pod scores after adding entries: %w", err)
 	}
@@ -183,7 +183,7 @@ func demonstrateValkeyOperations(ctx context.Context, indexer *kvcache.Indexer) 
 	logger.Info("Cache lookup after eviction", "keysFound", len(lookupAfterEvict))
 
 	// Final score check to see the difference
-	finalScores, err := indexer.GetPodScores(ctx, prompt, modelName, []string{"demo-pod-1", "demo-pod-2"})
+	finalScores, err := indexer.GetPodScores(ctx, nil, prompt, modelName, []string{"demo-pod-1", "demo-pod-2"})
 	if err != nil {
 		return fmt.Errorf("failed to get final pod scores: %w", err)
 	}

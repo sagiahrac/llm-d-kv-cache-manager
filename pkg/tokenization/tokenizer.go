@@ -17,6 +17,7 @@ limitations under the License.
 package tokenization
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -25,6 +26,7 @@ import (
 
 	"github.com/daulet/tokenizers"
 	lru "github.com/hashicorp/golang-lru/v2"
+	preprocessing "github.com/llm-d/llm-d-kv-cache-manager/pkg/preprocessing/chat_completions"
 	"go.uber.org/multierr"
 	"golang.org/x/sync/singleflight"
 )
@@ -35,6 +37,7 @@ const tokenizersCacheSize = 20
 
 // Tokenizer interface defines the methods for tokenization.
 type Tokenizer interface {
+	RenderChatTemplate(string, *preprocessing.RenderJinjaTemplateRequest) (string, error)
 	// Encode tokenizes the input string and returns the token IDs and offsets.
 	Encode(input, modelName string) ([]uint32, []tokenizers.Offset, error)
 }
@@ -267,6 +270,7 @@ type CachedTokenizer struct {
 	cache             *lru.Cache[string, *tokenizers.Tokenizer]
 	group             singleflight.Group
 	tokenizerProvider tokenizerProvider
+	chatTemplater     *preprocessing.ChatTemplatingProcessor
 }
 
 // NewCachedHFTokenizer creates a new instance of CachedTokenizer downloading tokenizer configs from HuggingFace with
@@ -286,11 +290,19 @@ func NewCachedHFTokenizer(config *HFTokenizerConfig) (Tokenizer, error) {
 		return nil, fmt.Errorf("failed to initialize tokenizer cache: %w", err)
 	}
 
+	chatTemplater := preprocessing.NewChatTemplatingProcessor()
+	err = chatTemplater.Initialize()
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize chat templater: %w", err)
+	}
+
 	return &CachedTokenizer{
 		cache: tokenizersCache,
 		tokenizerProvider: &hfTokenizerProvider{
-			cfgOpt: cfg,
+			cfgOpt:    cfg,
+			authToken: config.HuggingFaceToken,
 		},
+		chatTemplater: chatTemplater,
 	}, nil
 }
 
@@ -314,11 +326,18 @@ func NewCachedLocalTokenizer(config LocalTokenizerConfig) (Tokenizer, error) {
 		return nil, fmt.Errorf("failed to discover local tokenizer map: %w", err)
 	}
 
+	chatTemplater := preprocessing.NewChatTemplatingProcessor()
+	err = chatTemplater.Initialize()
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize chat templater: %w", err)
+	}
+
 	return &CachedTokenizer{
 		cache: tokenizersCache,
 		tokenizerProvider: &localTokenizerProvider{
 			cfg: config,
 		},
+		chatTemplater: chatTemplater,
 	}, nil
 }
 
@@ -345,6 +364,47 @@ func (t *CachedTokenizer) get(modelName string) (*tokenizers.Tokenizer, error) {
 	return tokenizer, nil
 }
 
+func (t *CachedTokenizer) RenderChatTemplate(
+	modelName string, renderReq *preprocessing.RenderJinjaTemplateRequest,
+) (string, error) {
+	ctx := context.TODO()
+
+	if renderReq.ChatTemplate == "" {
+		req, err := getFetchChatTemplateRequest(modelName, t.tokenizerProvider)
+		if err != nil {
+			return "", fmt.Errorf("failed to create fetch chat template request: %w", err)
+		}
+		renderReq.ChatTemplate, renderReq.ChatTemplateKWArgs, err = t.chatTemplater.FetchChatTemplate(
+			ctx, req,
+		)
+		if err != nil {
+			return "", fmt.Errorf("failed to fetch chat template: %w", err)
+		}
+	}
+
+	res, err := t.chatTemplater.RenderChatTemplate(ctx, renderReq)
+	if err != nil {
+		return "", fmt.Errorf("failed to render chat template: %w", err)
+	}
+	return res.RenderedChats[0], nil
+}
+
+func getFetchChatTemplateRequest(modelName string, t tokenizerProvider) (preprocessing.FetchChatTemplateRequest, error) {
+	var req preprocessing.FetchChatTemplateRequest
+	if localTokenizerProvider, ok := t.(*localTokenizerProvider); ok {
+		path, ok := localTokenizerProvider.cfg.ModelTokenizerMap[modelName]
+		if !ok {
+			return req, fmt.Errorf("tokenizer for model %q not found", modelName)
+		}
+		req.Model = path
+	}
+	if hfTokenizerProvider, ok := t.(*hfTokenizerProvider); ok {
+		req.Model = modelName
+		req.Token = hfTokenizerProvider.authToken
+	}
+	return req, nil
+}
+
 // Encode converts a string into token IDs.
 func (t *CachedTokenizer) Encode(input, modelName string) ([]uint32, []tokenizers.Offset, error) {
 	tokenizer, err := t.get(modelName)
@@ -357,7 +417,7 @@ func (t *CachedTokenizer) Encode(input, modelName string) ([]uint32, []tokenizer
 		tokenizers.WithReturnOffsets(),
 	}
 
-	resp := tokenizer.EncodeWithOptions(input, true, encodeOptions...)
+	resp := tokenizer.EncodeWithOptions(input, false, encodeOptions...)
 	return resp.IDs, resp.Offsets, nil
 }
 
@@ -375,7 +435,8 @@ func getTokenizerCacheDir() string {
 // hfTokenizerProvider implements tokenizerProvider by downloading tokenizers from HuggingFace.
 // It uses the HuggingFace tokenizers library to fetch tokenizer configurations from the HuggingFace Hub.
 type hfTokenizerProvider struct {
-	cfgOpt tokenizers.TokenizerConfigOption
+	cfgOpt    tokenizers.TokenizerConfigOption
+	authToken string
 }
 
 // getTokenizer downloads and returns a tokenizer from HuggingFace for the specified model.
@@ -420,6 +481,26 @@ type CompositeTokenizer struct {
 	// Tokenizers is an ordered list of tokenizers to try.
 	// They are attempted in order until one succeeds.
 	Tokenizers []Tokenizer
+}
+
+func (c *CompositeTokenizer) RenderChatTemplate(
+	modelName string, renderReq *preprocessing.RenderJinjaTemplateRequest,
+) (string, error) {
+	var rErr error
+	for _, tokenizer := range c.Tokenizers {
+		copiedRenderReq, err := renderReq.DeepCopy()
+		if err != nil {
+			rErr = multierr.Append(rErr, fmt.Errorf("failed to copy render request: %w", err))
+			continue
+		}
+		rendered, err := tokenizer.RenderChatTemplate(modelName, copiedRenderReq)
+		if err != nil {
+			rErr = multierr.Append(rErr, err)
+			continue
+		}
+		return rendered, nil
+	}
+	return "", rErr
 }
 
 // Encode attempts to tokenize the input using each tokenizer in order.
