@@ -27,7 +27,6 @@ import (
 	"github.com/daulet/tokenizers"
 	lru "github.com/hashicorp/golang-lru/v2"
 	"go.uber.org/multierr"
-	"golang.org/x/sync/singleflight"
 
 	preprocessing "github.com/llm-d/llm-d-kv-cache-manager/pkg/preprocessing/chat_completions"
 )
@@ -45,20 +44,20 @@ type Tokenizer interface {
 
 // HFTokenizerConfig holds the configuration for the HuggingFace tokenizer.
 type HFTokenizerConfig struct {
-	Enabled            bool   `json:"enabled"`
+	ModelID            string `json:"modelId"`
 	HuggingFaceToken   string `json:"huggingFaceToken"`
 	TokenizersCacheDir string `json:"tokenizersCacheDir"` // Directory for caching tokenizers
 }
 
 func (cfg *HFTokenizerConfig) IsEnabled() bool {
-	return cfg != nil && cfg.Enabled
+	return cfg != nil && cfg.ModelID != ""
 }
 
 // DefaultHFTokenizerConfig returns a default configuration for the HuggingFace
 // tokenizer.
-func DefaultHFTokenizerConfig() *HFTokenizerConfig {
+func NewHFTokenizerConfig(modelID string) *HFTokenizerConfig {
 	return &HFTokenizerConfig{
-		Enabled:            true,
+		ModelID:            modelID,
 		HuggingFaceToken:   "",
 		TokenizersCacheDir: getTokenizerCacheDir(),
 	}
@@ -107,17 +106,17 @@ type LocalTokenizerConfig struct {
 	// Default: defaultLocalTokenizerFileName
 	AutoDiscoveryTokenizerFileName string `json:"autoDiscoveryTokenizerFileName,omitempty"`
 
-	// ModelTokenizerMap is a map from model name to the absolute path of its tokenizer.json file.
-	// The model name (key) is typically the directory name containing the tokenizer.json file.
+	// ModelTokenizerPath is the absolute path to a single tokenizer.json file.
+	// This field represents the path to one specific tokenizer file.
 	//
-	// Example map: {"model-a": "/mnt/models/model-a/tokenizer.json", ...}
-	ModelTokenizerMap map[string]string `json:"modelTokenizerMap,omitempty"`
+	// Example: "/mnt/models/model-a/tokenizer.json"
+	ModelTokenizerPath string `json:"modelTokenizerMap,omitempty"`
 }
 
 // IsEnabled returns true if the local tokenizer configuration has any model mappings.
 // A local tokenizer is considered enabled when at least one model-to-file mapping exists.
 func (cfg *LocalTokenizerConfig) IsEnabled() bool {
-	return cfg != nil && len(cfg.ModelTokenizerMap) > 0
+	return cfg != nil && cfg.ModelTokenizerPath != ""
 }
 
 // DefaultLocalTokenizerConfig creates a LocalTokenizerConfig by automatically discovering
@@ -268,9 +267,7 @@ type tokenizerProvider interface {
 // The implementation wraps an LRU-cache for holding loaded per-model
 // tokenizers.
 type CachedTokenizer struct {
-	cache                *lru.Cache[string, *tokenizers.Tokenizer]
-	group                singleflight.Group
-	tokenizerProvider    tokenizerProvider
+	hfTokenizer          *tokenizers.Tokenizer
 	chatTemplateRenderer *preprocessing.ChatTemplatingProcessor
 }
 
@@ -286,7 +283,8 @@ func NewCachedHFTokenizer(config *HFTokenizerConfig) (Tokenizer, error) {
 		cfg = tokenizers.WithAuthToken(config.HuggingFaceToken)
 	}
 
-	tokenizersCache, err := lru.New[string, *tokenizers.Tokenizer](tokenizersCacheSize)
+	// The tokenizer is downloaded from https://huggingface.co/{modelName}.
+	hfTokenizer, err := tokenizers.FromPretrained(config.ModelID, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize tokenizer cache: %w", err)
 	}
@@ -298,11 +296,7 @@ func NewCachedHFTokenizer(config *HFTokenizerConfig) (Tokenizer, error) {
 	}
 
 	return &CachedTokenizer{
-		cache: tokenizersCache,
-		tokenizerProvider: &hfTokenizerProvider{
-			cfgOpt:    cfg,
-			authToken: config.HuggingFaceToken,
-		},
+		hfTokenizer:          hfTokenizer,
 		chatTemplateRenderer: chatTemplateRenderer,
 	}, nil
 }
