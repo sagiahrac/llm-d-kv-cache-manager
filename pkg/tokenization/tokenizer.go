@@ -301,8 +301,7 @@ func NewCachedHFTokenizer(modelID string, config *HFTokenizerConfig) (Tokenizer,
 //   - Pre-loaded models in containerized deployments
 //   - Reducing startup latency by avoiding downloads
 //
-// The tokenizer is initialized for a specific model at creation time,
-// providing direct access without caching overhead.
+// The tokenizer is initialized for a specific model at creation time.
 func NewCachedLocalTokenizer(modelName string, config LocalTokenizerConfig) (Tokenizer, error) {
 	if err := discoverLocalTokenizerMap(&config); err != nil {
 		return nil, fmt.Errorf("failed to discover local tokenizer map: %w", err)
@@ -323,10 +322,8 @@ func NewCachedLocalTokenizer(modelName string, config LocalTokenizerConfig) (Tok
 	}
 
 	return &CachedTokenizer{
-		tokenizer: tokenizer,
-		tokenizerProvider: &localTokenizerProvider{
-			cfg: config,
-		},
+		tokenizer:            tokenizer,
+		tokenizerProvider:    tokenizerProvider,
 		chatTemplateRenderer: chatTemplater,
 	}, nil
 }
@@ -359,7 +356,7 @@ func (t *CachedTokenizer) RenderChatTemplate(
 
 // Encode converts a string into token IDs.
 // The modelName parameter is ignored since this tokenizer is bound to a specific model.
-func (t *CachedTokenizer) Encode(input, modelName string) ([]uint32, []tokenizers.Offset, error) {
+func (t *CachedTokenizer) Encode(input, _ string) ([]uint32, []tokenizers.Offset, error) {
 	encodeOptions := []tokenizers.EncodeOption{
 		tokenizers.WithReturnTypeIDs(),
 		tokenizers.WithReturnOffsets(),

@@ -19,7 +19,6 @@ package e2e
 
 import (
 	"context"
-	"path/filepath"
 	"testing"
 
 	"github.com/go-logr/logr/testr"
@@ -73,24 +72,11 @@ func (s *KVCacheSuite) SetupTest() {
 	s.config.PrefixStoreConfig.BlockSize = 4
 	s.config.TokenProcessorConfig.BlockSize = 4
 
-	// Configure the indexer's tokenization pool to support local models
-	// This is needed because GetPodScores uses the indexer's internal pool for tokenization
-	testDataPath, err := filepath.Abs("testdata")
-	s.Require().NoError(err)
-
-	s.config.TokenizersPoolConfig.LocalTokenizerConfig.AutoDiscoveryDir = testDataPath
-
-	// Create a composite tokenizer for direct use in tests (not used by the indexer)
-	localTokenizer, err := tokenization.NewCachedLocalTokenizer(*s.config.TokenizersPoolConfig.LocalTokenizerConfig)
-	s.Require().NoError(err)
-
-	hfTokenizer, err := tokenization.NewCachedHFTokenizer(s.config.TokenizersPoolConfig.HFTokenizerConfig)
+	hfTokenizer, err := tokenization.NewCachedHFTokenizer(defaultModelName, s.config.TokenizersPoolConfig.HFTokenizerConfig)
 	s.Require().NoError(err)
 
 	// Use composite tokenizer: try local first, then fall back to HF
-	s.tokenizer = &tokenization.CompositeTokenizer{
-		Tokenizers: []tokenization.Tokenizer{localTokenizer, hfTokenizer},
-	}
+	s.tokenizer = hfTokenizer
 
 	s.tokensProcessor = kvblock.NewChunkedTokenDatabase(s.config.TokenProcessorConfig)
 
@@ -108,16 +94,9 @@ func (s *KVCacheSuite) SetupTest() {
 //
 //nolint:nonamedreturns // named returns keep gocritic unnamedResult satisfied while allowing compact return
 func (s *KVCacheSuite) promptToEngineAndRequestKeys(
-	prompt, model string, tokenizer ...tokenization.Tokenizer,
+	prompt, model string,
 ) (engineKeys, requestKeys []kvblock.Key) {
-	var tok tokenization.Tokenizer
-	if len(tokenizer) > 0 && tokenizer[0] != nil {
-		tok = tokenizer[0]
-	} else {
-		tok = s.tokenizer
-	}
-
-	tokens, _, err := tok.Encode(prompt, model)
+	tokens, _, err := s.tokenizer.Encode(prompt, model)
 	s.Require().NoError(err)
 
 	requestKeys = s.tokensProcessor.TokensToKVBlockKeys(nil, tokens, model)
@@ -141,6 +120,11 @@ func (s *KVCacheSuite) addEntriesToIndex(engineKeys, requestKeys []kvblock.Key, 
 		}
 	}))
 	s.Require().NoError(err)
+}
+
+func (s *KVCacheSuite) SetTokenizer(tokenizer tokenization.Tokenizer, modelName string) {
+	s.tokenizer = tokenizer
+	s.indexer.SetTokenizer(tokenizer, modelName)
 }
 
 // TestKVCacheSuite runs the KVCacheSuite using testify's suite runner.
