@@ -89,10 +89,10 @@ type ContentBlock struct {
 }
 
 type ImageBlock struct {
-	Url string `json:"url,omitempty"`
+	URL string `json:"url,omitempty"`
 }
 
-// UnmarshalJSON allow use both format
+// UnmarshalJSON allow use both format.
 func (mc *Content) UnmarshalJSON(data []byte) error {
 	// Raw format
 	var str string
