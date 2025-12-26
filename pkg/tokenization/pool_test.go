@@ -28,6 +28,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	"k8s.io/client-go/util/workqueue"
 
 	preprocessing "github.com/llm-d/llm-d-kv-cache/pkg/preprocessing/chat_completions"
 	"github.com/llm-d/llm-d-kv-cache/pkg/tokenization/prefixstore"
@@ -118,6 +119,145 @@ func TestPool_ProcessTask(t *testing.T) {
 	assert.NoError(t, err)
 	mockTokenizer.AssertExpectations(t)
 	mockIndexer.AssertExpectations(t)
+}
+
+func TestPool_WorkerLoop(t *testing.T) {
+	specs := map[string]struct {
+		setupMocks func(*MockIndexer, *MockTokenizer)
+		genTasks   func() ([]Task, chan tokenizationResponse)
+		verify     func(t *testing.T, pool *Pool, tasks []Task, resultChan chan tokenizationResponse)
+	}{
+		"successful task processing": {
+			setupMocks: func(mi *MockIndexer, mt *MockTokenizer) {
+				mi.On("FindLongestContainedTokens", "test prompt").Return([]uint32{}, 0.0)
+				mt.On("Encode", "test prompt", testModelName).Return([]uint32{1, 2, 3}, []tokenizers.Offset{{0, 4}}, nil)
+				mi.On("AddTokenization", "test prompt", []uint32{1, 2, 3}, []tokenizers.Offset{{0, 4}}).Return(nil)
+			},
+			genTasks: func() ([]Task, chan tokenizationResponse) {
+				return []Task{{Prompt: "test prompt"}}, nil
+			},
+			verify: func(t *testing.T, pool *Pool, tasks []Task, resultChan chan tokenizationResponse) {}, //nolint:thelper // noop
+		},
+		"task with result channel": {
+			setupMocks: func(mi *MockIndexer, mt *MockTokenizer) {
+				mi.On("FindLongestContainedTokens", "test with channel").Return([]uint32{}, 0.0)
+				mt.On("Encode", "test with channel", testModelName).Return([]uint32{10, 20, 30}, []tokenizers.Offset{{0, 4}}, nil)
+				mi.On("AddTokenization", "test with channel", []uint32{10, 20, 30}, []tokenizers.Offset{{0, 4}}).Return(nil)
+			},
+			genTasks: func() ([]Task, chan tokenizationResponse) {
+				ch := make(chan tokenizationResponse, 1)
+				return []Task{{
+					Prompt:   "test with channel",
+					ResultCh: ch,
+				}}, ch
+			},
+			verify: func(t *testing.T, pool *Pool, tasks []Task, resultCh chan tokenizationResponse) {
+				t.Helper()
+				require.Eventually(t, func() bool {
+					if result, ok := <-resultCh; ok {
+						assert.Equal(t, []uint32{10, 20, 30}, result.Tokens)
+						return true
+					}
+					return false
+				}, time.Second, 10*time.Millisecond)
+
+				// Verify channel is closed
+				require.Eventually(t, func() bool {
+					_, ok := <-resultCh
+					return !ok
+				}, time.Second, 10*time.Millisecond)
+			},
+		},
+		"multiple tasks processing": {
+			setupMocks: func(mi *MockIndexer, mt *MockTokenizer) {
+				for i := range 5 {
+					prompt := "prompt " + string(rune('a'+i))
+					tokens := []uint32{uint32(i), uint32(i + 1)} //nolint:gosec // test code
+					offsets := []tokenizers.Offset{{0, 6}}
+
+					mi.On("FindLongestContainedTokens", prompt).Return([]uint32{}, 0.0).Once()
+					mt.On("Encode", prompt, testModelName).Return(tokens, offsets, nil).Once()
+					mi.On("AddTokenization", prompt, tokens, offsets).Return(nil).Once()
+				}
+			},
+			genTasks: func() ([]Task, chan tokenizationResponse) {
+				tasks := make([]Task, 5)
+				for i := range 5 {
+					tasks[i] = Task{Prompt: "prompt " + string(rune('a'+i))}
+				}
+				return tasks, nil
+			},
+			verify: func(t *testing.T, pool *Pool, tasks []Task, resultChan chan tokenizationResponse) {
+				t.Helper()
+				require.Eventually(t, func() bool {
+					return pool.queue.Len() == 0
+				}, time.Second, 10*time.Millisecond, "queue should be drained")
+			},
+		},
+		"max retries exceeded": {
+			setupMocks: func(mi *MockIndexer, mt *MockTokenizer) {
+				// Mock will fail every time, causing retries
+				mi.On("FindLongestContainedTokens", "failing prompt").Return([]uint32{}, 0.0)
+				mt.On("Encode", "failing prompt", testModelName).Return(
+					[]uint32{}, []tokenizers.Offset{}, assert.AnError)
+			},
+			genTasks: func() ([]Task, chan tokenizationResponse) {
+				ch := make(chan tokenizationResponse, 1)
+				return []Task{{
+					Prompt:   "failing prompt",
+					ResultCh: ch,
+				}}, ch
+			},
+			verify: func(t *testing.T, pool *Pool, tasks []Task, resultCh chan tokenizationResponse) {
+				t.Helper()
+				require.Eventually(t, func() bool { // channel is closed, when max retries exceeded
+					if result, ok := <-resultCh; !ok {
+						assert.Equal(t, tokenizationResponse{}, result)
+						return true
+					}
+					return false
+				}, time.Second, 10*time.Millisecond)
+
+				require.Eventually(t, func() bool {
+					return pool.queue.Len() == 0
+				}, time.Second, 10*time.Millisecond)
+			},
+		},
+	}
+	for name, tt := range specs {
+		t.Run(name, func(t *testing.T) {
+			mockIndexer := &MockIndexer{}
+			mockTokenizer := &MockTokenizer{}
+
+			tt.setupMocks(mockIndexer, mockTokenizer)
+			pool := &Pool{
+				modelName:             testModelName,
+				workers:               1,
+				queue:                 workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[Task]()),
+				indexer:               mockIndexer,
+				tokenizer:             mockTokenizer,
+				minPrefixOverlapRatio: defaultMinPrefixOverlapRatio,
+			}
+
+			tasks, resultChan := tt.genTasks()
+			for _, task := range tasks {
+				pool.queue.Add(task)
+			}
+
+			pool.wg.Add(1)
+			go pool.workerLoop(0)
+
+			tt.verify(t, pool, tasks, resultChan)
+
+			// Shutdown
+			pool.queue.ShutDown()
+			pool.wg.Wait()
+
+			// Assert expectations
+			mockTokenizer.AssertExpectations(t)
+			mockIndexer.AssertExpectations(t)
+		})
+	}
 }
 
 func TestPool_RunIntegration(t *testing.T) {
