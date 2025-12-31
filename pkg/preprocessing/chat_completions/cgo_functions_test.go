@@ -32,9 +32,9 @@ import (
 )
 
 type (
-	ChatCompletionsRequest = preprocessing.ChatCompletionsRequest
-	Message                = preprocessing.Message
-	Content                = preprocessing.Content
+	RenderJinjaTemplateRequest = preprocessing.RenderJinjaTemplateRequest
+	Message                    = preprocessing.Message
+	Content                    = preprocessing.Content
 )
 
 // Global singleton wrapper to prevent multiple Python interpreter initializations.
@@ -177,7 +177,7 @@ func TestRenderJinjaTemplate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			request := &ChatCompletionsRequest{
+			request := &RenderJinjaTemplateRequest{
 				Messages:     tt.messages,
 				ChatTemplate: tt.template,
 			}
@@ -325,7 +325,7 @@ func TestChatCompletionsIntegration(t *testing.T) {
 
 			// Step 2: Render the conversation using the template
 			start = time.Now()
-			renderRequest := &ChatCompletionsRequest{
+			renderRequest := &RenderJinjaTemplateRequest{
 				Messages:           tt.conversation,
 				ChatTemplate:       template,
 				ChatTemplateKWArgs: templateVars,
@@ -446,7 +446,7 @@ func TestLongChatCompletions(t *testing.T) {
 
 		// Render long conversation
 		start = time.Now()
-		renderRequest := &ChatCompletionsRequest{
+		renderRequest := &RenderJinjaTemplateRequest{
 			Messages:           longConversation,
 			ChatTemplate:       template,
 			ChatTemplateKWArgs: templateVars,
@@ -531,7 +531,7 @@ func BenchmarkRenderJinjaTemplate(b *testing.B) {
 	template, templateVars, err := wrapper.FetchChatTemplate(context.Background(), templateRequest)
 	require.NoError(b, err, "Failed to get template for benchmark")
 
-	request := &ChatCompletionsRequest{
+	request := &RenderJinjaTemplateRequest{
 		Messages: []Message{
 			{Role: "user", Content: Content{Raw: "Hello"}},
 			{Role: "assistant", Content: Content{Raw: "Hi there!"}},
@@ -623,7 +623,7 @@ func runVLLMValidationTest(t *testing.T, modelName, expectedVLLMOutput string) {
 	wrapper := getGlobalWrapper()
 
 	// Test case based on the provided vLLM request
-	request := &ChatCompletionsRequest{
+	request := &RenderJinjaTemplateRequest{
 		Messages: []Message{
 			{Role: "user", Content: Content{Raw: "What is the weather in Paris?"}},
 			{Role: "assistant", Content: Content{Raw: "Let me check that for you."}},
@@ -750,7 +750,7 @@ func TestRenderChatTemplateWithLocalTemplate(t *testing.T) {
 	require.NoError(t, err, "FetchChatTemplate should not return an error")
 
 	// Now render a conversation using the fetched template
-	renderRequest := &ChatCompletionsRequest{
+	renderRequest := &RenderJinjaTemplateRequest{
 		Messages: []Message{
 			{Role: "user", Content: Content{Raw: "Hello from local tokenizer!"}},
 			{Role: "assistant", Content: Content{Raw: "Hi! I'm using a locally loaded template."}},

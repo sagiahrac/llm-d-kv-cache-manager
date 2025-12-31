@@ -523,7 +523,7 @@ func (s *KVCacheSuite) TestLocalTokenizerChatTemplateE2E() {
 
 			// Step 1: Render the conversation into a flattened prompt using local chat template
 			// This tests the full integration: Go -> CGO -> Python -> Local Tokenizer
-			renderReq := &preprocessing.ChatCompletionsRequest{
+			renderReq := &preprocessing.RenderJinjaTemplateRequest{
 				Messages: convertToPreprocessingChatMessages(conversation),
 			}
 			renderedPrompt, err := localTokenizer.RenderChatTemplate(tc.modelName, renderReq)
@@ -558,7 +558,7 @@ func (s *KVCacheSuite) TestLocalTokenizerChatTemplateE2E() {
 			s.T().Logf("GetPodScores returned score: %v for rendered chat template", pods[s.Pod1IP])
 
 			// Also verify by rendering and tokenizing the same conversation again
-			renderReq2 := &preprocessing.ChatCompletionsRequest{
+			renderReq2 := &preprocessing.RenderJinjaTemplateRequest{
 				Messages: convertToPreprocessingChatMessages(conversation),
 			}
 			renderedPrompt2, err := localTokenizer.RenderChatTemplate(tc.modelName, renderReq2)
@@ -618,7 +618,7 @@ func (s *KVCacheSuite) TestLocalTokenizerChatTemplateMultiTurnE2E() {
 			}
 
 			// Render and cache the short conversation
-			shortReq := &preprocessing.ChatCompletionsRequest{
+			shortReq := &preprocessing.RenderJinjaTemplateRequest{
 				Messages: convertToPreprocessingChatMessages(shortConversation),
 			}
 			shortPrompt, err := localTokenizer.RenderChatTemplate(tc.modelName, shortReq)
@@ -645,7 +645,7 @@ func (s *KVCacheSuite) TestLocalTokenizerChatTemplateMultiTurnE2E() {
 			}
 
 			// Render and test the extended conversation
-			extendedReq := &preprocessing.ChatCompletionsRequest{
+			extendedReq := &preprocessing.RenderJinjaTemplateRequest{
 				Messages: convertToPreprocessingChatMessages(extendedConversation),
 			}
 			extendedPrompt, err := localTokenizer.RenderChatTemplate(tc.modelName, extendedReq)
@@ -743,7 +743,7 @@ func (s *KVCacheSuite) TestLocalVsHFChatTemplateConsistency() {
 			}
 
 			// Render with local tokenizer
-			req1 := &preprocessing.ChatCompletionsRequest{
+			req1 := &preprocessing.RenderJinjaTemplateRequest{
 				Messages: convertToPreprocessingChatMessages(conversation),
 			}
 			localRendered, err := localTokenizer.RenderChatTemplate(tc.modelName, req1)
@@ -767,7 +767,7 @@ func (s *KVCacheSuite) TestLocalVsHFChatTemplateConsistency() {
 			s.T().Logf("GetPodScores returned score: %v", pods[s.Pod1IP])
 
 			// Render the same conversation again to test caching and consistency
-			req2 := &preprocessing.ChatCompletionsRequest{
+			req2 := &preprocessing.RenderJinjaTemplateRequest{
 				Messages: convertToPreprocessingChatMessages(conversation),
 			}
 			localRendered2, err := localTokenizer.RenderChatTemplate(tc.modelName, req2)
@@ -806,7 +806,7 @@ func (s *KVCacheSuite) TestLocalTokenizerChatTemplateErrorHandling() {
 	}
 
 	// Test 1: Non-existent model
-	reqNonExistent := &preprocessing.ChatCompletionsRequest{
+	reqNonExistent := &preprocessing.RenderJinjaTemplateRequest{
 		Messages: convertToPreprocessingChatMessages(conversation),
 	}
 	_, err = localTokenizer.RenderChatTemplate("non-existent-model", reqNonExistent)
@@ -815,7 +815,7 @@ func (s *KVCacheSuite) TestLocalTokenizerChatTemplateErrorHandling() {
 
 	// Test 2: Empty conversation
 	emptyConversation := []ChatMessage{}
-	reqEmpty := &preprocessing.ChatCompletionsRequest{
+	reqEmpty := &preprocessing.RenderJinjaTemplateRequest{
 		Messages: convertToPreprocessingChatMessages(emptyConversation),
 	}
 	rendered, err := localTokenizer.RenderChatTemplate("test-model", reqEmpty)
@@ -879,7 +879,7 @@ func (s *KVCacheSuite) TestLocalTokenizerChatTemplateLongConversation() {
 			}
 
 			// Render the long conversation
-			reqLong := &preprocessing.ChatCompletionsRequest{
+			reqLong := &preprocessing.RenderJinjaTemplateRequest{
 				Messages: convertToPreprocessingChatMessages(longConversation),
 			}
 			renderedPrompt, err := localTokenizer.RenderChatTemplate(tc.modelName, reqLong)

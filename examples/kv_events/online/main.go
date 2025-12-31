@@ -61,7 +61,7 @@ const (
 // ChatCompletionsRequest holds the fields needed for chat-completions rendering.
 type ChatCompletionsRequest struct {
 	Model string `json:"model"`
-	*preprocessing.ChatCompletionsRequest
+	*preprocessing.RenderJinjaTemplateRequest
 }
 
 func main() {
@@ -332,7 +332,7 @@ func setupUnifiedHTTPEndpoints(
 			}
 		}
 
-		response, err := chatTemplatingProcessor.RenderChatTemplate(ctx, req.ChatCompletionsRequest)
+		response, err := chatTemplatingProcessor.RenderChatTemplate(ctx, req.RenderJinjaTemplateRequest)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("Failed to render chat template: %v", err), http.StatusInternalServerError)
 			return

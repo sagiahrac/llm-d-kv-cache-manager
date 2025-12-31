@@ -24,7 +24,7 @@ const (
 	ModelName = "bert-base-uncased"
 )
 
-var RenderReq *preprocessing.ChatCompletionsRequest = nil
+var RenderReq *preprocessing.RenderJinjaTemplateRequest = nil
 
 //go:embed prompt.txt
 var Prompt string

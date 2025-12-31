@@ -37,7 +37,7 @@ type DummyTokenizer struct {
 }
 
 func (d *DummyTokenizer) RenderChatTemplate(
-	prompt string, renderReq *preprocessing.ChatCompletionsRequest,
+	prompt string, renderReq *preprocessing.RenderJinjaTemplateRequest,
 ) (string, error) {
 	return prompt, nil
 }

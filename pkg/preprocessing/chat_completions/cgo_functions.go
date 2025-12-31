@@ -73,7 +73,7 @@ func (w *ChatTemplatingProcessor) Finalize() {
 //
 //nolint:gocritic // hugeParam: req is passed by value intentionally for immutability, but can consider using pointer.
 func (w *ChatTemplatingProcessor) RenderChatTemplate(ctx context.Context,
-	req *ChatCompletionsRequest,
+	req *RenderJinjaTemplateRequest,
 ) (*RenderJinjaTemplateResponse, error) {
 	traceLogger := log.FromContext(ctx).V(logging.TRACE).WithName("RenderChatTemplate")
 	if req == nil {

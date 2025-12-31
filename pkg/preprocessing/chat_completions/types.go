@@ -25,11 +25,11 @@ import (
 
 const nilString = "<nil>"
 
-// ChatCompletionsRequest is a structured representation of the fields we parse out of the v1/chat/completions
+// RenderJinjaTemplateRequest is a structured representation of the fields we parse out of the v1/chat/completions
 // request body. For detailed body fields, please refer to https://platform.openai.com/docs/api-reference/chat.
 // This struct includes fields usable for plugins and scheduling decisions - and not the entire
 // API spec.
-type ChatCompletionsRequest struct {
+type RenderJinjaTemplateRequest struct {
 	/* parameters from the official OpenAI chat-completions API */
 	Messages []Message     `json:"messages,omitempty"`
 	Tools    []interface{} `json:"tools,omitempty"`
@@ -44,7 +44,7 @@ type ChatCompletionsRequest struct {
 	CacheSalt string `json:"cache_salt,omitempty"`
 }
 
-func (r *ChatCompletionsRequest) String() string {
+func (r *RenderJinjaTemplateRequest) String() string {
 	if r == nil {
 		return nilString
 	}
@@ -56,12 +56,12 @@ func (r *ChatCompletionsRequest) String() string {
 	return fmt.Sprintf("{MessagesLength: %d}", messagesLen)
 }
 
-func (r *ChatCompletionsRequest) DeepCopy() (*ChatCompletionsRequest, error) {
+func (r *RenderJinjaTemplateRequest) DeepCopy() (*RenderJinjaTemplateRequest, error) {
 	b, err := json.Marshal(r)
 	if err != nil {
 		return nil, err
 	}
-	var out ChatCompletionsRequest
+	var out RenderJinjaTemplateRequest
 	err = json.Unmarshal(b, &out)
 	if err != nil {
 		return nil, err
@@ -142,7 +142,7 @@ type RenderJinjaTemplateResponse struct {
 }
 
 // FetchChatTemplateRequest represents the request to fetch a chat template.
-// This is needed if the fields are not set in the `ChatCompletionsRequest`.
+// This is needed if the fields are not set in the `RenderJinjaTemplateRequest`.
 // When called, it will fetch the `chat_template` from the tokenizer.
 // If the tokenizer is not present, it will be fetched from HuggingFace using
 // the `token` if provided.

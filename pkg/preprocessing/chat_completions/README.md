@@ -46,9 +46,9 @@ The following is the major request structure used for templating:
 - Some fields are provided by the router (serving vLLM's OpenAI-compatible API).
 - Some fields are fetched from the model's tokenizer (e.g., chat template).
 
-The `ChatCompletionsRequest` matches the `transformers` library's `ChatTemplateRequest` structure, which is used to render the chat template.
+The `RenderJinjaTemplateRequest` matches the `transformers` library's `ChatTemplateRequest` structure, which is used to render the chat template.
 
-**ChatCompletionsRequest accepts these fields, that match the `render_jinja_template`'s expected parameters:**
+**RenderJinjaTemplateRequest accepts these fields, that match the `render_jinja_template`'s expected parameters:**
 - `Messages` - List of message lists (role/content pairs)
 - `Tools` - (Optional) List of tool schemas
 - `Documents` - (Optional) List of document dicts

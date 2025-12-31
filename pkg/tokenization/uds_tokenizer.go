@@ -131,7 +131,7 @@ func (u *UdsTokenizer) Encode(input, modelName string) ([]uint32, []tokenizers.O
 
 // RenderChatTemplate renders a chat template using the UDS tokenizer service.
 func (u *UdsTokenizer) RenderChatTemplate(
-	_ string, renderReq *preprocessing.ChatCompletionsRequest,
+	_ string, renderReq *preprocessing.RenderJinjaTemplateRequest,
 ) (string, error) {
 	messagesBytes, err := json.Marshal(renderReq.Messages)
 	if err != nil {
