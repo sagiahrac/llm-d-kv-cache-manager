@@ -40,8 +40,6 @@ type RenderJinjaTemplateRequest struct {
 	ContinueFinalMessage      bool                   `json:"continue_final_message,omitempty"`
 	AddGenerationPrompt       bool                   `json:"add_generation_prompt,omitempty"`
 	ChatTemplateKWArgs        map[string]interface{} `json:"chat_template_kwargs,omitempty"`
-	// CacheSalt is an optional request parameter to isolate prefix caches for security reasons.
-	CacheSalt string `json:"cache_salt,omitempty"`
 }
 
 func (r *RenderJinjaTemplateRequest) String() string {
