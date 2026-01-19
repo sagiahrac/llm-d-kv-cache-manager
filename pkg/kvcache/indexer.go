@@ -137,7 +137,7 @@ func (k *Indexer) GetPodScores(ctx context.Context, renderReq *preprocessing.App
 	tokens := k.tokenizersPool.Tokenize(renderReq, prompt)
 
 	// 2. get block keys
-	blockKeys := k.tokenProcessor.TokensToKVBlockKeys(nil, tokens, modelName)
+	blockKeys := k.tokenProcessor.TokensToKVBlockKeys(kvblock.EmptyBlockHash, tokens, modelName)
 	if len(blockKeys) == 0 {
 		traceLogger.Info("no block keys found, returning empty scores")
 		//nolint:nilnil // no need to return an error
@@ -165,7 +165,7 @@ func (k *Indexer) GetPodScores(ctx context.Context, renderReq *preprocessing.App
 }
 
 // podsPerKeyPrintHelper formats a map of keys to pod entries for printing.
-func podsPerKeyPrintHelper(ks map[kvblock.Key][]kvblock.PodEntry) string {
+func podsPerKeyPrintHelper(ks map[kvblock.BlockHash][]kvblock.PodEntry) string {
 	flattened := ""
 	for k, v := range ks {
 		entries := make([]string, len(v))
